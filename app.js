@@ -16,24 +16,28 @@ const signatureCanvas = document.getElementById('signatureCanvas');
 const clearPadBtn = document.getElementById('clearPadBtn');
 const saveSignatureBtn = document.getElementById('saveSignatureBtn');
 
-// 簽名框在底圖 (1055 x 1491) 的絕對尺寸與中心坐標配置 (比例 374:84)
+const downloadModalEl = document.getElementById('downloadModal');
+const downloadModal = new bootstrap.Modal(downloadModalEl);
+const downloadPreviewImg = document.getElementById('downloadPreviewImg');
+
+// 簽名框在底圖 (1055 x 1491) 的絕對尺寸與中心坐標配置 (左右微收，比例 320:86 ≈ 3.72:1)
 const BOX_CONFIG = {
 	principal: {
-		x: 384,
-		y: 952,
-		w: 374,
-		h: 84,
-		centerX: 571,
-		centerY: 994,
+		x: 410,
+		y: 950,
+		w: 320,
+		h: 86,
+		centerX: 570,
+		centerY: 993,
 		title: '委託人簽名',
 	},
 	delegate: {
-		x: 384,
-		y: 1062,
-		w: 374,
-		h: 84,
-		centerX: 571,
-		centerY: 1104,
+		x: 410,
+		y: 1060,
+		w: 320,
+		h: 86,
+		centerX: 570,
+		centerY: 1103,
 		title: '受委託人簽名',
 	},
 };
@@ -143,27 +147,112 @@ function openSignatureModal(role) {
 	signatureModal.show();
 }
 
-// --- Signature Pad 初始化 ---
+// --- Signature Pad 初始化與畫布尺寸同步 ---
+let currentPadCSSWidth = 0;
+let currentPadCSSHeight = 0;
+
 signaturePad = new SignaturePad(signatureCanvas, {
-	minWidth: 1.5,
-	maxWidth: 3.5,
+	minWidth: 0.8,
+	maxWidth: 2.0,
 	penColor: '#0a0a0a',
 });
 
+// 防止在手機或電腦簽名時觸發文字選取或長按選單干擾
+['selectstart', 'contextmenu'].forEach((eventType) => {
+	signatureCanvas.addEventListener(eventType, (e) => e.preventDefault());
+	const container = document.getElementById('sigPadContainer');
+	if (container)
+		container.addEventListener(eventType, (e) => e.preventDefault());
+});
+signatureModalEl.addEventListener('selectstart', (e) => e.preventDefault());
+
+// 同步簽名畫布尺寸與座標（支援開啟彈窗與螢幕翻轉/視窗縮放）
+function syncSignaturePadDimensions(preserveExistingStrokes = true) {
+	if (!signatureModalEl.classList.contains('show')) return;
+
+	const rect = signatureCanvas.getBoundingClientRect();
+	if (rect.width <= 0 || rect.height <= 0) return;
+
+	// 若尺寸無變更（容許 1px 誤差），直接返回避免重複重新計算
+	if (
+		Math.abs(rect.width - currentPadCSSWidth) < 1 &&
+		Math.abs(rect.height - currentPadCSSHeight) < 1
+	) {
+		return;
+	}
+
+	const ratio = Math.max(window.devicePixelRatio || 1, 1);
+	const prevW = currentPadCSSWidth;
+	const prevH = currentPadCSSHeight;
+
+	// 若畫布上已有未儲存的即時筆跡，予以暫存以便等比例縮放重繪
+	const currentStrokes =
+		preserveExistingStrokes && signaturePad ? signaturePad.toData() : null;
+	const hadStrokes = currentStrokes && currentStrokes.length > 0;
+
+	// 重新設定畫布底層緩衝區像素大小（徹底解決翻轉後座標與點擊偏移的核心）
+	signatureCanvas.width = Math.round(rect.width * ratio);
+	signatureCanvas.height = Math.round(rect.height * ratio);
+	const ctx = signatureCanvas.getContext('2d');
+	ctx.scale(ratio, ratio);
+
+	currentPadCSSWidth = rect.width;
+	currentPadCSSHeight = rect.height;
+
+	if (hadStrokes && prevW > 0 && prevH > 0) {
+		// 根據翻轉或縮放前後比例，將筆跡點等比例映射至新畫布尺寸
+		const scaledData = getScaledPointGroups(
+			currentStrokes,
+			prevW,
+			prevH,
+			rect.width,
+			rect.height,
+		);
+		signaturePad.fromData(scaledData);
+	} else {
+		signaturePad.clear();
+	}
+}
+
+// 螢幕翻轉或視窗大小改變處理
+function handlePadResizeOrOrientation() {
+	if (!signatureModalEl.classList.contains('show')) return;
+	// 立即校正
+	requestAnimationFrame(() => syncSignaturePadDimensions(true));
+	// 手機翻轉螢幕時動畫常有延遲（100ms~300ms），分段校正確保最終坐標完全對齊
+	setTimeout(() => syncSignaturePadDimensions(true), 100);
+	setTimeout(() => syncSignaturePadDimensions(true), 300);
+	setTimeout(() => syncSignaturePadDimensions(true), 500);
+}
+
+window.addEventListener('resize', handlePadResizeOrOrientation);
+window.addEventListener('orientationchange', handlePadResizeOrOrientation);
+if (window.screen && window.screen.orientation) {
+	window.screen.orientation.addEventListener(
+		'change',
+		handlePadResizeOrOrientation,
+	);
+}
+
 signatureModalEl.addEventListener('shown.bs.modal', () => {
-	resizeSignaturePadCanvas();
+	const rect = signatureCanvas.getBoundingClientRect();
+	const ratio = Math.max(window.devicePixelRatio || 1, 1);
+
+	signatureCanvas.width = Math.round(rect.width * ratio);
+	signatureCanvas.height = Math.round(rect.height * ratio);
+	const ctx = signatureCanvas.getContext('2d');
+	ctx.scale(ratio, ratio);
+
+	currentPadCSSWidth = rect.width;
+	currentPadCSSHeight = rect.height;
+
 	loadExistingSignatureIfAny();
 });
 
-function resizeSignaturePadCanvas() {
-	const ratio = Math.max(window.devicePixelRatio || 1, 1);
-	const rect = signatureCanvas.getBoundingClientRect();
-	signatureCanvas.width = rect.width * ratio;
-	signatureCanvas.height = rect.height * ratio;
-	const ctx = signatureCanvas.getContext('2d');
-	ctx.scale(ratio, ratio);
-	signaturePad.clear();
-}
+signatureModalEl.addEventListener('hidden.bs.modal', () => {
+	currentPadCSSWidth = 0;
+	currentPadCSSHeight = 0;
+});
 
 // 根據視窗縮放等比例縮放筆跡點陣列
 function getScaledPointGroups(
@@ -279,9 +368,9 @@ saveSignatureBtn.addEventListener('click', () => {
 
 	const config = BOX_CONFIG[currentSigningRole];
 
-	// 充分填滿簽名框 (框尺寸 374 x 84)
-	const maxW = 358;
-	const maxH = 76;
+	// 充分填滿簽名框 (框尺寸 320 x 86)
+	const maxW = 304;
+	const maxH = 78;
 	const scale = Math.min(maxW / trimmed.width, maxH / trimmed.height);
 	const drawW = Math.round(trimmed.width * scale);
 	const drawH = Math.round(trimmed.height * scale);
@@ -368,17 +457,56 @@ clearAllBtn.addEventListener('click', () => {
 	}
 });
 
+// 透過 Blob URL 觸發原生下載
+function downloadBlob(blob, fileName) {
+	const blobUrl = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = blobUrl;
+	link.download = fileName;
+	link.style.display = 'none';
+	document.body.appendChild(link);
+	link.click();
+	setTimeout(() => {
+		document.body.removeChild(link);
+		URL.revokeObjectURL(blobUrl);
+	}, 15000);
+}
+
 // --- 下載圖檔 ---
 downloadBtn.addEventListener('click', () => {
 	if (!isImageLoaded) return;
 
-	try {
-		const link = document.createElement('a');
-		link.download = '委託書_已簽名.jpg';
-		link.href = docCanvas.toDataURL('image/jpeg', 0.95);
-		link.click();
-	} catch (err) {
-		console.error('Download error:', err);
-		alert('下載時發生錯誤：' + err.message);
-	}
+	// 使用 toBlob 轉為二進制檔案，解決手機/Android 無法下載或解析巨大 Data URI 的問題
+	docCanvas.toBlob(
+		(blob) => {
+			if (!blob) {
+				alert('圖檔產生失敗，請重試！');
+				return;
+			}
+
+			const fileName = '委託書_已簽名.jpg';
+			currentExportBlob = blob;
+			currentExportFile = new File([blob], fileName, {
+				type: 'image/jpeg',
+			});
+
+			const isMobileOrTablet =
+				/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+				'ontouchstart' in window ||
+				navigator.maxTouchPoints > 0;
+
+			// 判斷是否為手機或平板環境
+			if (isMobileOrTablet) {
+				// 手機/平板：不自動觸發檔案下載，徹底擋下手機系統「檢視/下載」攔截視窗
+				// 直接開啟手機專屬儲存彈窗，長按圖片即可存入相簿或分享
+				downloadPreviewImg.src = docCanvas.toDataURL('image/jpeg', 0.95);
+				downloadModal.show();
+			} else {
+				// 電腦版：直接執行檔案下載
+				downloadBlob(blob, fileName);
+			}
+		},
+		'image/jpeg',
+		0.95,
+	);
 });
