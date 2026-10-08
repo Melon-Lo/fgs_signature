@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-TW">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>委託書線上簽名</title>
+		<!-- Bootstrap 5 CSS -->
+		<link
+			href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+			rel="stylesheet"
+		/>
+		<!-- Bootstrap Icons -->
+		<link
+			href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+			rel="stylesheet"
+		/>
+		<!-- 自訂樣式 -->
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body class="py-3 py-md-4">
+		<div class="container" style="max-width: 860px">
+			<!-- 標題區域 -->
+			<div class="text-center mb-3">
+				<h3 class="fw-bold text-dark mb-1">
+					<i class="bi bi-pen-fill text-primary me-2"></i>委託書線上簽名
+				</h3>
+			</div>
+
+			<!-- 操作工具列 -->
+			<div class="card mb-3 border-0 shadow-sm sticky-toolbar bg-white">
+				<div class="card-body py-2 px-3">
+					<div
+						class="d-flex flex-wrap align-items-center justify-content-between gap-2"
+					>
+						<!-- 快捷簽名按鈕 -->
+						<div class="d-flex flex-wrap align-items-center gap-2">
+							<button
+								id="signPrincipalBtn"
+								class="btn btn-outline-primary btn-sm"
+							>
+								<i class="bi bi-pencil me-1"></i>委託人簽名
+							</button>
+							<button
+								id="signDelegateBtn"
+								class="btn btn-outline-primary btn-sm"
+							>
+								<i class="bi bi-pencil me-1"></i>受委託人簽名
+							</button>
+
+							<button
+								id="clearAllBtn"
+								class="btn btn-outline-danger btn-sm"
+								disabled
+							>
+								<i class="bi bi-trash3 me-1"></i>清除
+							</button>
+						</div>
+
+						<!-- 下載按鈕 -->
+						<div class="ms-auto">
+							<button
+								id="downloadBtn"
+								class="btn btn-success btn-sm px-3 fw-semibold"
+							>
+								<i class="bi bi-download me-1"></i>下載簽名圖檔
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- 提示訊息 -->
+			<div
+				class="alert alert-info py-2 px-3 d-flex align-items-center mb-3 small"
+				role="alert"
+			>
+				<i class="bi bi-info-circle-fill me-2 flex-shrink-0 text-primary"></i>
+				<div>
+					請點擊下方簽名框處（或上方按鈕）進行簽名，完成後即可下載已簽名圖檔。
+				</div>
+			</div>
+
+			<!-- 委託書畫布區域 -->
+			<div class="document-card text-center">
+				<div class="canvas-wrapper" id="canvasWrapper">
+					<canvas id="docCanvas"></canvas>
+
+					<!-- 委託人簽名框 -->
+					<div
+						id="boxPrincipal"
+						class="signature-box"
+						role="button"
+						aria-label="委託人簽名區"
+					>
+						<span class="box-hint"
+							><i class="bi bi-pencil-fill me-1"></i>點擊簽名</span
+						>
+					</div>
+
+					<!-- 受委託人簽名框 -->
+					<div
+						id="boxDelegate"
+						class="signature-box"
+						role="button"
+						aria-label="受委託人簽名區"
+					>
+						<span class="box-hint"
+							><i class="bi bi-pencil-fill me-1"></i>點擊簽名</span
+						>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- 簽名 Modal -->
+		<div
+			class="modal fade"
+			id="signatureModal"
+			tabindex="-1"
+			aria-labelledby="signatureModalLabel"
+			aria-hidden="true"
+			data-bs-backdrop="static"
+		>
+			<div class="modal-dialog modal-dialog-centered">
+				<div class="modal-content border-0 shadow">
+					<div class="modal-header py-2 px-3 border-bottom">
+						<h5
+							class="modal-title fs-6 fw-bold text-dark"
+							id="signatureModalLabel"
+						>
+							<i class="bi bi-pen-fill text-primary me-2"></i>請在下方區域簽名
+						</h5>
+						<button
+							type="button"
+							class="btn-close"
+							data-bs-dismiss="modal"
+							aria-label="關閉"
+						></button>
+					</div>
+					<div class="modal-body p-3">
+						<div class="signature-pad-container" id="sigPadContainer">
+							<canvas id="signatureCanvas"></canvas>
+						</div>
+						<div class="d-flex justify-content-between align-items-center mt-2">
+							<small class="text-muted"
+								><i class="bi bi-hand-index-thumb me-1"></i
+								>支援手指或觸控筆手寫</small
+							>
+							<button
+								type="button"
+								id="clearPadBtn"
+								class="btn btn-outline-danger btn-sm py-1"
+							>
+								<i class="bi bi-eraser me-1"></i>清除重寫
+							</button>
+						</div>
+					</div>
+					<div class="modal-footer py-2 px-3 border-top">
+						<button
+							type="button"
+							class="btn btn-light btn-sm"
+							data-bs-dismiss="modal"
+						>
+							取消
+						</button>
+						<button
+							type="button"
+							id="saveSignatureBtn"
+							class="btn btn-primary btn-sm px-3"
+						>
+							<i class="bi bi-check2 me-1"></i>完成並蓋上簽名
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- 引用本地 Base64 資料 -->
+		<script src="image_data.js"></script>
+		<!-- Bootstrap 5 Bundle JS -->
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+		<!-- Signature Pad CDN -->
+		<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+		<!-- 自訂邏輯 -->
+		<script src="app.js"></script>
+	</body>
+</html>
